@@ -1,0 +1,35 @@
+name: offline-checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        elixir: ['1.18', '1.20.5']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Fetch runtime and record exact image identity
+        env:
+          ELIXIR_TAG: ${{ matrix.elixir }}
+        run: |
+          docker pull "elixir:$ELIXIR_TAG"
+          docker image inspect "elixir:$ELIXIR_TAG" --format '{{json .RepoDigests}}'
+      - name: Test and asserting demo without network access
+        env:
+          ELIXIR_TAG: ${{ matrix.elixir }}
+        run: |
+          docker run --rm --network none \
+            --user "$(id -u):$(id -g)" \
+            --env HOME=/tmp \
+            --env 'ERL_FLAGS=+S 2:2 +SDcpu 1 +SDio 1' \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/work" \
+            --workdir /work "elixir:$ELIXIR_TAG" \
+            sh -ec 'elixir --version; mix test --seed 0; mix run demo/demo.exs'
